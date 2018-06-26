@@ -1,0 +1,3 @@
+[submodule "vendor/arxiv.py"]
+	path = vendor/arxiv.py
+	url = https://github.com/lukasschwab/arxiv.py.git
