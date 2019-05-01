@@ -3,6 +3,8 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 
+os.makedirs(DATA_DIR, exist_ok=True)
+
 # arxiv crawler setting
 ARXIV_QUERY = "cat:cs.CV+OR+cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:cs.NE+OR+cat:stat.ML".replace(
     "+", " "
