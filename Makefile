@@ -10,7 +10,7 @@ arxiv-db-populate:
 	$(PYTHON) -m jrp.services.arxiv_feed populate 
 
 pdf-db-update:
-	$(PYTHON) -m jrp.services.pdf update_pdf_db --rq
+	$(PYTHON) -m jrp.services.pdf_main update_pdf_db --rq
 
 pdf-db-update:
-	$(PYTHON) -m jrp.services.pdf update_pdf_db --rq
+	$(PYTHON) -m jrp.services.pdf_main update_pdf_db --rq
