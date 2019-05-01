@@ -14,12 +14,15 @@ thumbnail-db-update:
 text-db-update:
 	$(PYTHON) -m jrp.services.pdf_main update_pdf_text_db --rq 
 
+pdf-db-update:
+	$(PYTHON) -m jrp.services.pdf_main update_pdf_db --rq
+
+arxiv-db-update:
+	$(PYTHON) -m jrp.services.arxiv_feed update
+
 arxiv-db-populate:
 	$(PYTHON) -m jrp.services.arxiv_feed populate 
 
-pdf-db-update:
-	$(PYTHON) -m jrp.services.pdf_main update_pdf_db --rq
-
-pdf-db-update:
-	$(PYTHON) -m jrp.services.pdf_main update_pdf_db --rq
-
+prod-run-impl: rq-worker-start 
+prod-run:
+	$(MAKE) -j 10 

@@ -96,20 +96,6 @@ def update_pdf_data(id):
             # db.pdf_db[id] = 'WRONG_FILE'  # XXX
             raise Exception("{}: WRONG_FILE; try again".format(id))
 
-        # update text
-        # db.pdf_text_db[id] = pdf_text
-
-        # update thumbnail
-        # update_pdf_thumbnail_given_pdf_data(id, data)
-
-        """
-        # TODO: Deal with es next
-        doc = db.es.get(index='arxiv', id=id)
-        d = doc['_source']
-        d['pdf_text'] = pdf_text
-        db.es.index(index="arxiv", body=body, id=id)
-        """
-
         db.pdf_db[id] = data
         print("{}: downloaded".format(id))
         return True
@@ -181,4 +167,10 @@ def update_pdf_text(id):
     assert id in db.pdf_db, id
     text = pdf_data2text(db.pdf_db[id])
     db.pdf_text_db[id] = text
+
+    doc = db.es.get(index="arxiv", id=id)
+    body = doc["_source"]
+    body["pdf_text"] = text
+    db.es.index(index="arxiv", body=body, id=id)
+
     return True
