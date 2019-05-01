@@ -4,3 +4,4 @@ __pycache__
 *.sqlite
 data/
 jrp/config.py
+*.db

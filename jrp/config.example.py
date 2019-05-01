@@ -1,4 +1,5 @@
 import os
+import requests
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
@@ -23,3 +24,7 @@ ES_HOSTS = ['localhost']
 # redis settings
 REDIS_HOST = '127.0.0.1'
 REDIS_PORT = 6379
+
+
+def requests_get(url):
+    return requests.get(url)

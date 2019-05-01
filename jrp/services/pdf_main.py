@@ -19,22 +19,33 @@ if __name__ == '__main__':
     setting = {
         'update_pdf_db': {
             'keys_db': db.arxiv_db,
-            'func': update_pdf_data, 
+            'target_db': db.pdf_db,
+            'func': update_pdf_data,
         },
         'update_pdf_thumbnail_db': {
             'keys_db': db.pdf_db,
+            'target_db': db.pdf_thumbnail_db,
             'func': update_pdf_thumbnail,
         },
         'update_pdf_text_db': {
             'keys_db': db.pdf_db,
+            'target_db': db.pdf_text_db,
             'func': update_pdf_text,
         }
     }[args.task]
 
-    func, keys_db = setting['func'], setting['keys_db']
+    func, keys_db, target_db = (
+        setting['func'], setting['keys_db'], setting['target_db'])
 
     queue = None
     if args.rq:
         import rq
         queue = rq.Queue(connection=db.redis)
-    sweep_db(func, keys_db, queue=queue)
+
+    ks0 = list(keys_db.keys())
+    ks1 = list(target_db.keys())
+    if 'update_pdf_thumbnail_db' in args.task:
+        ks1 = set('-'.join(k.split('-')[:-1]) for k in ks1)
+
+    keys = sorted(set(ks0) - set(ks1))
+    sweep_db(func, keys, queue=queue)
