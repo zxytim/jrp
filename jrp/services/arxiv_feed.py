@@ -79,9 +79,10 @@ def iter_arixv_objects(query, *, total=1000, start=0, stride=1000, sort_order="d
 def populate_db():
     # iter all existing papers, from old to new (to prevent from affecting by
     # new updates while populating)
+    start = 0
     for r in tqdm(
             iter_arixv_objects(config.ARXIV_QUERY, 
-                               start=0, total=100000000, 
+                               start=start, total=100000000, 
                                # sort_order="ascending",
                                sort_order="descending",
                                ),
