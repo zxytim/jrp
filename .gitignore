@@ -1,4 +1,4 @@
-db.sqlite
 *.swp
 *.swo
 __pycache__
+*.sqlite
