@@ -44,8 +44,9 @@ def save_arxiv_object(r):
     db.arxiv_db[id] = r
 
 
-def iter_arixv_objects(query, *, total=1000, start=0, stride=1000, sort_order="descending", 
-                       num_retry=7):
+def iter_arixv_objects(
+    query, *, total=1000, start=0, stride=1000, sort_order="descending", num_retry=7
+):
     """
     :param sort_order: 'descending' or 'ascending'
     """
@@ -67,7 +68,7 @@ def iter_arixv_objects(query, *, total=1000, start=0, stride=1000, sort_order="d
 
             if len(rst) != 0:
                 break
-            print('retry {} after {} seconds: {}'.format(j, sleep, i))
+            print("retry {} after {} seconds: {}".format(j, sleep, i))
             time.sleep(sleep)
             sleep *= 2
         else:
@@ -81,12 +82,14 @@ def populate_db():
     # new updates while populating)
     start = 0
     for r in tqdm(
-            iter_arixv_objects(config.ARXIV_QUERY, 
-                               start=start, total=100000000, 
-                               # sort_order="ascending",
-                               sort_order="descending",
-                               ),
-            initial=start
+        iter_arixv_objects(
+            config.ARXIV_QUERY,
+            start=start,
+            total=100000000,
+            # sort_order="ascending",
+            sort_order="descending",
+        ),
+        initial=start,
     ):
         save_arxiv_object(r)
 
