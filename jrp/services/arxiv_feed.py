@@ -12,10 +12,6 @@ from jrp import db, config
 import arxiv
 
 
-class StopCrawling(Exception):
-    pass
-
-
 def save_arxiv_object(r):
     id = r["id"]
 
@@ -48,21 +44,33 @@ def save_arxiv_object(r):
     db.arxiv_db[id] = r
 
 
-def iter_arixv_objects(query, total=1000, stride=1000, sort_order="descending"):
+def iter_arixv_objects(query, *, total=1000, start=0, stride=1000, sort_order="descending", 
+                       num_retry=7):
     """
     :param sort_order: 'descending' or 'ascending'
     """
-    for i in range(0, total, stride):
+    for i in range(start, total, stride):
         start = i
-        rst = arxiv.query(
-            query,
-            sort_by="lastUpdatedDate",
-            sort_order=sort_order,
-            start=start,
-            max_results=min(total, stride),
-        )
 
-        if len(rst) == 0:
+        # XXX: HACK: It is weired that a same query would return nothing, but
+        # somethings return somthing. I don't know why. I can just try multiple
+        # times to see if it really works.
+        sleep = 1
+        for j in range(num_retry):
+            rst = arxiv.query(
+                query,
+                sort_by="lastUpdatedDate",
+                sort_order=sort_order,
+                start=start,
+                max_results=min(total, stride),
+            )
+
+            if len(rst) != 0:
+                break
+            print('retry {} after {} seconds: {}'.format(j, sleep, i))
+            time.sleep(sleep)
+            sleep *= 2
+        else:
             break
 
         yield from rst
@@ -72,22 +80,28 @@ def populate_db():
     # iter all existing papers, from old to new (to prevent from affecting by
     # new updates while populating)
     for r in tqdm(
-        iter_arixv_objects(config.ARXIV_QUERY, total=100000000, sort_order="ascending")
+            iter_arixv_objects(config.ARXIV_QUERY, 
+                               start=0, total=100000000, 
+                               # sort_order="ascending",
+                               sort_order="descending",
+                               ),
+            initial=start
     ):
         save_arxiv_object(r)
 
 
 def update_db():
     total = 10000
-    while True:
-        try:
-            for r in tqdm(iter_arixv_objects(config.ARXIV_QUERY, total), total=total):
-                if r.id in db.arxiv_db:
-                    raise StopCrawling(r.id)
-                save_arxiv_object(r)
-        except StopCrawling as e:
+    for r in tqdm(iter_arixv_objects(config.ARXIV_QUERY, total), total=total):
+        if r.id in db.arxiv_db:
             print("Stop crawling: {} has been crawled already".format(e.args[0]))
+            break
+        save_arxiv_object(r)
 
+
+def update_db_daemon():
+    while True:
+        update_db()
         print("sleep for {} seconds".format(config.ARXIV_UPDATE_INTERVAL))
         time.sleep(config.ARXIV_UPDATE_INTERVAL)
 
