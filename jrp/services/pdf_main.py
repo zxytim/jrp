@@ -10,6 +10,7 @@ if __name__ == "__main__":
         choices=["update_pdf_db", "update_pdf_thumbnail_db", "update_pdf_text_db"],
     )
     parser.add_argument("--rq", action="store_true")
+    parser.add_argument("--top-keys", default=10000, type=int)
     args = parser.parse_args()
 
     setting = {
@@ -47,5 +48,6 @@ if __name__ == "__main__":
     if "update_pdf_thumbnail_db" in args.task:
         ks1 = set("-".join(k.split("-")[:-1]) for k in ks1)
 
-    keys = sorted(set(ks0) - set(ks1))
+    ks1_set = set(ks1)
+    keys = [k for k in ks0 if k not in ks1_set][::-1][:args.top_keys]
     sweep_db(func, keys, queue=queue)

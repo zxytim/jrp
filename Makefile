@@ -23,6 +23,14 @@ arxiv-db-update:
 arxiv-db-populate:
 	$(PYTHON) -m jrp.services.arxiv_feed populate 
 
-prod-run-impl: rq-worker-start 
+viz-service:
+	$(PYTHON) -m jrp.services.viz_serve
+
+prod-run-impl: thumbnail-db-update text-db-update pdf-db-update arxiv-db-update rq-worker-start
+
 prod-run:
-	$(MAKE) -j 10 
+	$(MAKE) -j 10 prod-run-impl
+
+# DEBUG
+rq-dashboard:
+	rq-dashboard

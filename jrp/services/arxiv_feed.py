@@ -96,10 +96,15 @@ def populate_db():
 
 def update_db():
     total = 10000
-    for r in tqdm(iter_arixv_objects(config.ARXIV_QUERY, total), total=total):
-        if r.id in db.arxiv_db:
-            print("Stop crawling: {} has been crawled already".format(e.args[0]))
+    found_duplication = 0
+    for r in tqdm(iter_arixv_objects(config.ARXIV_QUERY, total=total), total=total):
+        if found_duplication > 200:
+            print('Found {} duplication. Abort crawling.'.format(found_duplication))
             break
+        if r.id in db.arxiv_db:
+            found_duplication += 1
+            print("Found duplication: {} has been crawled already".format(r.id))
+            continue
         save_arxiv_object(r)
 
 

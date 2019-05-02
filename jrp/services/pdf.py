@@ -1,5 +1,6 @@
 import io
 import time
+import itertools
 import collections
 
 import requests
@@ -35,10 +36,9 @@ def sweep_db(func, keys, *, queue=None, num_retry_max=3):
         prev = total
         fq = FailedQueue(queue.connection)
 
-        while True:
+        for tick in itertools.count():
             new_results = [r for r in results if r.status != JobStatus.FINISHED]
             now = len(new_results)
-            print(len(new_results), len(failed_jobs))
             if len(new_results) - len(failed_jobs) == 0:
                 break
             tq.update(n=prev - now)
@@ -48,7 +48,7 @@ def sweep_db(func, keys, *, queue=None, num_retry_max=3):
 
             fjobs = fq.get_jobs()
             fjobs = [j for j in fjobs if j.args[0] not in failed_jobs]
-            if len(fjobs):
+            if tick % 10 == 0 and len(fjobs):
                 print("Found {} failed jobs. Try requeueing.".format(len(fjobs)))
                 for j in fjobs:
                     cnt = fjob_retry_count[j.args[0]]
@@ -106,8 +106,7 @@ def update_pdf_data(id):
             print("{}: PDF unavailable".format(id))
             return True
 
-    s = "{}: not pdf, but `{}`".format(id, mime)
-    print(s)
+    s = "{}: not pdf, but `{}`".format(id, mime, data)
     raise Exception(s)
 
 
@@ -168,9 +167,9 @@ def update_pdf_text(id):
     text = pdf_data2text(db.pdf_db[id])
     db.pdf_text_db[id] = text
 
-    doc = db.es.get(index="arxiv", id=id)
-    body = doc["_source"]
-    body["pdf_text"] = text
+    doc = db.es.get(index='arxiv', id=id)
+    body = doc['_source']
+    body['pdf_text'] = text
     db.es.index(index="arxiv", body=body, id=id)
 
     return True
