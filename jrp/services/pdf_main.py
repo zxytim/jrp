@@ -13,41 +13,53 @@ if __name__ == "__main__":
     parser.add_argument("--top-keys", default=10000, type=int)
     args = parser.parse_args()
 
+    def get_arxiv_db_keys_by_updated_descending():
+        kvs = sorted([(k, v['updated'])
+                      for k, v in db.arxiv_db.items()],
+                     key=lambda x: x[1],
+                     reverse=True)
+        return [x[0] for x in kvs]
+
+
     setting = {
         "update_pdf_db": {
-            "keys_db": db.arxiv_db,
+            "source_keys_getter": get_arxiv_db_keys_by_updated_descending,
             "target_db": db.pdf_db,
+            'workload_type': 'io',
             "func": update_pdf_data,
         },
         "update_pdf_thumbnail_db": {
-            "keys_db": db.pdf_db,
+            "source_keys_getter": db.pdf_db.keys,
             "target_db": db.pdf_thumbnail_db,
+            'workload_type': 'computation',
             "func": update_pdf_thumbnail,
         },
         "update_pdf_text_db": {
-            "keys_db": db.pdf_db,
+            "source_keys_getter": db.pdf_db.keys,
             "target_db": db.pdf_text_db,
+            'workload_type': 'computation',
             "func": update_pdf_text,
         },
     }[args.task]
 
-    func, keys_db, target_db = (
+    func, source_keys_getter, target_db, workload_type = (
         setting["func"],
-        setting["keys_db"],
+        setting["source_keys_getter"],
         setting["target_db"],
+        setting['workload_type'],
     )
 
     queue = None
     if args.rq:
         import rq
 
-        queue = rq.Queue(connection=db.redis)
+        queue = rq.Queue(name=workload_type, connection=db.redis)
 
-    ks0 = list(keys_db.keys())
+    ks0 = list(source_keys_getter())
     ks1 = list(target_db.keys())
     if "update_pdf_thumbnail_db" in args.task:
         ks1 = set("-".join(k.split("-")[:-1]) for k in ks1)
 
     ks1_set = set(ks1)
-    keys = [k for k in ks0 if k not in ks1_set][::-1][:args.top_keys]
+    keys = [k for k in ks0 if k not in ks1_set][:args.top_keys]
     sweep_db(func, keys, queue=queue)
