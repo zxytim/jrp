@@ -80,8 +80,16 @@ class RQFailureRecover(Task):
                 return False
 
             # XXX: Damn... Should change to another database soon
-            if isinstance(fjob.exc_info, str) and 'sqlite3.OperationalError: database is locked' in  fjob.exc_info:
-                return True
+            if isinstance(fjob.exc_info, str):
+                permitted_errors = [
+                    'sqlite3.OperationalError: database is locked',
+                    'rq.timeouts.JobTimeoutException: Task exceeded maximum timeout value',
+                    'pdftotext',
+                    'not pdf, but `text/xml`',
+                ]
+                for s in permitted_errors:
+                    if s in fjob.exc_info:
+                        return True
 
             return False
 

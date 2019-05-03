@@ -25,6 +25,11 @@ def pdf2thumbnail(pdf_path, out_prefix):
             f.write(v)
 
 
+def pdf2text(pdf_path):
+    with open(pdf_path, 'rb') as f:
+        print(pdf_data2text(f.read()))
+
+
 def main():
     task_func_list = [
         update_pdf_data,
@@ -32,6 +37,7 @@ def main():
         update_pdf_thumbnail,
         dump_pdf,
         pdf2thumbnail,
+        pdf2text,
     ]
     task_name2func = {
         f.__name__: f for f in task_func_list
