@@ -2,6 +2,8 @@ import io
 import time
 import itertools
 import collections
+import traceback
+import functools
 import shutil
 import subprocess
 import os
@@ -29,13 +31,13 @@ def sweep_db(func, keys, *, queue=None, num_retry_max=3, buf_size=100):
         from rq.job import JobStatus
         from rq.queue import FailedQueue
 
-        fjob_retry_count = collections.defaultdict(int)
-        failed_jobs = set()
-
         key_it = iter(keys)
         results = []
 
         def push_next_key():
+            """
+            :return: True if succeed, otherwise False
+            """
             try:
                 id = next(key_it)
                 results.append(queue.enqueue(func, id, job_timeout=600))
@@ -43,47 +45,37 @@ def sweep_db(func, keys, *, queue=None, num_retry_max=3, buf_size=100):
             except StopIteration:
                 return False
 
-        def push_batch_job():
-            """
-            :return: where finish on this batch
-            """
-            for i in range(buf_size):
+        counter = collections.Counter()
+
+        def wait_one_round(tq):
+            filter_results = (
+                lambda *whats, complement=False:
+                [r for r in results if (r.status in whats) ^ complement]
+            )
+            jobs_done = filter_results(JobStatus.FINISHED, JobStatus.FAILED)
+            counter.update([r.status for r in jobs_done])
+
+            jobs_undone = filter_results(JobStatus.FINISHED, JobStatus.FAILED, complement=True)
+            cur_counter = counter.copy()
+            cur_counter.update([r.status for r in jobs_undone])
+
+            tq.desc = ' '.join(
+                '{}={}'.format(k, v)
+                for k, v in sorted(cur_counter.items())
+            )
+
+            tq.update(len(jobs_done))
+            results.clear()
+            results.extend(jobs_undone)
+
+            while len(results) < buf_size:
                 if not push_next_key():
-                    return True
-            return False
+                    return False
+            return True
 
-        def wait_results_finish():
-            filter_results = lambda what: [r for r in results if r.status == what]
-
-            total = len(results)
-            tq = tqdm(total=total)
-            while True:
-                finished_jobs = filter_results(JobStatus.FINISHED)
-
-                # Failed jobs are failed jobs. Recovery of these jobs
-                # is not the responsibility here. Recover should be
-                # done in higher logic level.
-                failed_jobs = filter_results(JobStatus.FAILED)
-
-                jobs_done = len(finished_jobs) + len(failed_jobs)
-                if jobs_done == len(results):
-                    results.clear()
-                    break
-                tq.update(jobs_done - tq.n)
-
-                tq.desc = ' '.join('{}={}'.format(k, v)
-                for k, v in sorted(
-                        collections.Counter([r.status for r in results]).items()
-                ))
-
-                time.sleep(1)
-
-        while True:
-            no_more_jobs = push_batch_job()
-            wait_results_finish()
-
-            if no_more_jobs:
-                break
+        tq = tqdm(len(keys))
+        while wait_one_round(tq):
+            time.sleep(1)
 
 
 def requests_get(url):
@@ -173,8 +165,8 @@ def pdf_data_to_thumbnails_by_imagemagick(pdf_data):
         for idx, i in enumerate(pdf_imgs.sequence[: config.NUM_THUMBNAIL_PAGE]):
             j = Image()
             j.read(image=i)
-            j.format = "png"
-            j.transform(resize="x180")
+            j.format = "jpg"
+            j.transform(resize="x{}".format(config.PDF_THUMBNAIL_SIZE))
 
             bio = io.BytesIO()
             j.save(bio)
@@ -188,8 +180,15 @@ def pdf_data_to_thumbnails_by_imagemagick(pdf_data):
     return rst
 
 
-def pdf_data_to_thumbnails_by_preview_generator(pdf_data):
+def pdf_data_to_thumbnails_by_preview_generator(
+        pdf_data, page=None,
+        width_max=256,
+        height_max=256):
     """A more robust preview generator than imagemagick (wand).
+    
+    :param page: an int for one page or a list of ints for multiple pages
+
+    :return: dict map from page number to encoded image of that page.
     """
     # Installation:
     #    - pip install preview-generator
@@ -197,6 +196,15 @@ def pdf_data_to_thumbnails_by_preview_generator(pdf_data):
     # Testcase:
     #    - http://arxiv.org/abs/1612.01033v2
     #    - where preview_generator succeed but wand failed.
+
+
+    if not isinstance(page, (tuple, list)):
+        page_list = [page]
+    else:
+        page_list = page
+
+    if page_list is None:
+        page_list = list(range(num_pages))
 
     from preview_generator.manager import PreviewManager
 
@@ -212,9 +220,14 @@ def pdf_data_to_thumbnails_by_preview_generator(pdf_data):
         num_pages = manager.get_page_nb(pdf_path)
 
         rst = {}
-        for page in range(min(num_pages, config.NUM_THUMBNAIL_PAGE)):
+        for page in page_list: 
+            if not (0 <= page < num_pages):
+                continue
             preview_path = manager.get_jpeg_preview(
-                pdf_path, width=256, height=256, page=page)
+                pdf_path,
+                width=width_max,
+                height=height_max,
+                page=page)
             with open(preview_path, 'rb') as f:
                 rst[page] = f.read()
     finally:
@@ -223,7 +236,73 @@ def pdf_data_to_thumbnails_by_preview_generator(pdf_data):
     return rst
 
 
-pdf_data_to_thumbnails = pdf_data_to_thumbnails_by_preview_generator
+def pdf_data_to_thumbnails_by_qpdf(pdf_data):
+    # `qpdf` seems quite robust at reading PDF files than other libraries.  It is
+    # the last-resort we have: splitting pdf into a set of
+    # one-page pdfs, and then creating thumbnails one-by-one.
+    # `qpdf` can be install via system package manager
+    from plumbum.cmd import qpdf
+
+    tempdir = tempfile.mkdtemp(prefix='qpdf-temp')
+
+    def make_tempfile():
+        fd, path = tempfile.mkstemp(dir=tempdir)
+        os.close(fd)
+        return path
+
+    try:
+        pdf_path = make_tempfile()
+        with open(pdf_path, 'wb') as f:
+            f.write(pdf_data)
+
+        # retcode=3: suppress error of
+        #     qpdf: operation succeeded with warnings; resulting file may have some problems
+        num_pages = int(qpdf('--show-npages', pdf_path, retcode=3).strip())
+
+        pdf_pages = {}
+        for page in range(min(num_pages, config.NUM_THUMBNAIL_PAGE)):
+            page_out = make_tempfile()
+            qpdf('--pages', pdf_path, '{page}-{page}'.format(page=page+1),
+                 '--', pdf_path, page_out, retcode=3)
+
+            pdf_pages[page] = page_out
+
+        rst = {}
+        for page, path in sorted(pdf_pages.items()):
+            with open(path, 'rb') as f:
+                out = pdf_data_to_thumbnails(f.read(), use_last_resort=False)
+
+            assert len(out) == 1, (len(out), page, path)
+            rst[page] = list(out.values())[0]
+
+        return rst
+    finally:
+        shutil.rmtree(tempdir)
+
+
+def pdf_data_to_thumbnails(pdf_data, use_last_resort=True):
+    pdf_thumbnailing_funcs = [
+        functools.partial(
+            pdf_data_to_thumbnails_by_preview_generator,
+            width_max=config.PDF_THUMBNAIL_SIZE,
+            height_max=config.PDF_THUMBNAIL_SIZE,
+            page=list(range(config.NUM_THUMBNAIL_PAGE)),
+        ),
+        pdf_data_to_thumbnails_by_imagemagick,
+    ]
+
+    if use_last_resort:
+        pdf_thumbnailing_funcs.append(pdf_data_to_thumbnails_by_qpdf)
+
+    exceptions = []
+    for func in pdf_thumbnailing_funcs:
+        try:
+            return func(pdf_data)
+        except Exception as e:
+            traceback.print_exc()
+            exceptions.append(e)
+    else:
+        raise ValueError('Error generating thumbnails: ', exceptions)
 
 
 def update_pdf_thumbnail_given_pdf_data(id, pdf_data):

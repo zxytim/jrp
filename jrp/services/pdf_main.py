@@ -1,5 +1,7 @@
 from jrp import db
 from .pdf import update_pdf_data, update_pdf_thumbnail, update_pdf_text, sweep_db
+from tqdm import tqdm
+
 
 if __name__ == "__main__":
     import argparse
@@ -55,8 +57,8 @@ if __name__ == "__main__":
 
         queue = rq.Queue(name=workload_type, connection=db.redis)
 
-    ks0 = list(source_keys_getter())
-    ks1 = list(target_db.keys())
+    ks0 = list(tqdm(source_keys_getter(), desc='get_source_keys'))
+    ks1 = list(tqdm(target_db.keys(), desc='get_target_db_keys'))
     if "update_pdf_thumbnail_db" in args.task:
         ks1 = set("-".join(k.split("-")[:-1]) for k in ks1)
 

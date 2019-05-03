@@ -17,9 +17,10 @@ def dump_pdf(id, path):
 def pdf2thumbnail(pdf_path, out_prefix):
     with open(pdf_path, 'rb') as f:
         thumbnails = pdf_data_to_thumbnails(f.read())
+    from IPython import embed; embed() 
 
     for k, v in sorted(thumbnails.items()):
-        out_path = out_prefix + str(k) + '.png'
+        out_path = out_prefix + str(k) + '.jpg'
         with open(out_path, 'wb') as f:
             f.write(v)
 
