@@ -68,6 +68,8 @@ class RQFailureRecover(Task):
     def init_parser(self, parser):
         parser.add_argument(
             'queue_names', nargs='+', help='one name at a time')
+        parser.add_argument(
+            '--interval', default=60, type=float)
 
     def run(self, args):
         redis = StrictRedis(config.REDIS_HOST, config.REDIS_PORT)
@@ -77,35 +79,58 @@ class RQFailureRecover(Task):
 
         def check_fjob(fjob):
             if fjob.origin not in names:
-                return False
+                return None
 
             # XXX: Damn... Should change to another database soon
             if isinstance(fjob.exc_info, str):
-                permitted_errors = [
+                temporary_errors = [
                     'sqlite3.OperationalError: database is locked',
                     'rq.timeouts.JobTimeoutException: Task exceeded maximum timeout value',
+                    'elasticsearch.exceptions.ConnectionTimeout: ConnectionTimeout caused by',
+                    'elasticsearch.exceptions.ConnectionError: ConnectionError',
+                    'elasticsearch.exceptions.TransportError: TransportError',
+                    'requests.exceptions.ConnectionError: HTTPSConnectionPool',
                     'pdftotext',
                     'not pdf, but `text/xml`',
+                    'OperationalError: database is locked',
+                    """oss2.exceptions.RequestError: {'status': -2, 'x-oss-request-id': '', 'details': "RequestError: ('Connection aborted.', timeout('timed out'))"}""",
+                    "requests.exceptions.ConnectionError: ('Connection aborted.', timeout('timed out'))",
+                    """"RequestError: ('Connection aborted.', BrokenPipeError(32, 'Broken pipe'))"}""",
+                    """oss2.exceptions.RequestError: {'status': -2, 'x-oss-request-id': '', 'details': "RequestError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"}""",
+                    'port=80): Read timed out. (read timeout=60)"}',
+                ]
+                for s in temporary_errors:
+                    if s in fjob.exc_info:
+                        return 'requeue'
+
+                permitted_errors = [
+                    'sqlite3.IntegrityError: UNIQUE constraint failed: progress.key'
                 ]
                 for s in permitted_errors:
                     if s in fjob.exc_info:
-                        return True
+                        return 'delete'
 
-            return False
+            return None
 
         while True:
-            count = 0
+            count_requeue = 0
+            count_delete = 0
 
             fjobs = fq.get_jobs()
             for fjob in fjobs:
-                if check_fjob(fjob):
+                t = check_fjob(fjob)
+                if t == 'requeue':
                     fq.requeue(fjob.id)
-                    count += 1
+                    count_requeue += 1
+                elif t == 'delete':
+                    fjob.delete()
+                    count_delete += 1
 
-            print('{} failed jobs: {} requeued, {} remains'.format(
-                len(fjobs), count, len(fjobs) - count)
+            num_remain = len(fjobs) - count_requeue - count_delete
+            print('{} failed jobs: {} requeued, {} deleteed, {} remains'.format(
+                len(fjobs), count_requeue, count_delete, num_remain)
             )
-            time.sleep(60)
+            time.sleep(args.interval)
 
 
 def main():

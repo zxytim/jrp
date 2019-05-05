@@ -73,7 +73,7 @@ def sweep_db(func, keys, *, queue=None, num_retry_max=3, buf_size=100):
                     return False
             return True
 
-        tq = tqdm(len(keys))
+        tq = tqdm(total=len(keys))
         while wait_one_round(tq):
             time.sleep(1)
 
@@ -257,13 +257,14 @@ def pdf_data_to_thumbnails_by_qpdf(pdf_data):
 
         # retcode=3: suppress error of
         #     qpdf: operation succeeded with warnings; resulting file may have some problems
-        num_pages = int(qpdf('--show-npages', pdf_path, retcode=3).strip())
+        retcode = (0, 3)
+        num_pages = int(qpdf('--show-npages', pdf_path, retcode=retcode).strip())
 
         pdf_pages = {}
         for page in range(min(num_pages, config.NUM_THUMBNAIL_PAGE)):
             page_out = make_tempfile()
             qpdf('--pages', pdf_path, '{page}-{page}'.format(page=page+1),
-                 '--', pdf_path, page_out, retcode=3)
+                 '--', pdf_path, page_out, retcode=retcode)
 
             pdf_pages[page] = page_out
 

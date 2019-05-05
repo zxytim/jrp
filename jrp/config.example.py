@@ -15,11 +15,28 @@ ARXIV_UPDATE_INTERVAL = 4 * 60 * 60  # 4 hours
 
 # pdf db
 PDF_DB_PATH = os.path.join(DATA_DIR, "pdf.sqlite")
+
+# thumbnail db
 PDF_THUMBNAIL_DB_PATH = os.path.join(DATA_DIR, "pdf_thumbnail.sqlite")
 NUM_THUMBNAIL_PAGE = 8
+PDF_THUMBNAIL_SIZE = 256
+
+# text db
+PDF_TEXT_DB_PATH = os.path.join(DATA_DIR, "pdf_text.sqlite")
+
+# all-in-one database
+AIO_DB_PATH = os.path.join(DATA_DIR, 'all-in-one.sqlite')
+
+# Aliyun OSS
+OSS2_ACCESS_KEY_ID = 'FIXME'
+OSS2_ACCESS_KEY_SECRET = 'FIXME'
+OSS2_ARXIV_ENDPOINT = 'FIXME'
+OSS2_ARXIV_BUCKET_NAME = 'FIXME'
+
 
 # Elasticsearch settings
 ES_HOSTS = ["localhost"]
+
 
 # redis settings
 REDIS_HOST = "127.0.0.1"
